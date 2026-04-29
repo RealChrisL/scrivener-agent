@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__line__reply",
+      "mcp__line__get_content",
+      "mcp__line__upload_file",
+      "Bash(crontab -l)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "line"
+  ]
+}

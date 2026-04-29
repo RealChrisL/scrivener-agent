@@ -1,0 +1,28 @@
+# Credentials — never commit
+.env
+*.env
+
+# Runtime data — per-user, ephemeral
+history/
+history.log
+*.log
+crm_cache.json
+pending_alerts.json
+unknown-groups.log
+sla.log
+
+# Downloaded media from LINE
+inbox/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Claude Code session data
+.claude/projects/
+
+# OS
+.DS_Store
+Thumbs.db

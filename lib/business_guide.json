@@ -1,0 +1,43 @@
+{
+  "_instructions": "Fill in your own service areas below. The agent loads this file at startup and uses it to identify case types, guide conversational questionnaires, share pricing, and explain processes. Add or remove service objects as needed. Replace every [placeholder] with your firm's actual content.",
+  "businesses": [
+    {
+      "name": "[服務項目 A 名稱]",
+      "priority": "P0",
+      "questions": [
+        "[第一個諮詢問題 — 例如：案件基本情況]",
+        "[第二個問題 — 例如：涉及人員資訊]",
+        "[第三個問題 — 例如：時程或緊急程度]",
+        "[依業務需求繼續新增問題]"
+      ],
+      "pricing": "[填入收費方式，或標註「請洽詢報價」]",
+      "documents": "[填入客戶需準備的文件清單]",
+      "process": "[填入標準辦理流程步驟]"
+    },
+    {
+      "name": "[服務項目 B 名稱]",
+      "priority": "P0",
+      "questions": [
+        "[第一個諮詢問題]",
+        "[第二個問題]",
+        "[第三個問題]",
+        "[依業務需求繼續新增問題]"
+      ],
+      "pricing": "[填入收費方式]",
+      "documents": "[填入所需文件]",
+      "process": "[填入辦理流程]"
+    },
+    {
+      "name": "[服務項目 C 名稱]",
+      "priority": "P1",
+      "questions": [
+        "[第一個諮詢問題]",
+        "[第二個問題]",
+        "[依業務需求繼續新增問題]"
+      ],
+      "pricing": "[填入收費方式]",
+      "documents": "[填入所需文件]",
+      "process": "[填入辦理流程]"
+    }
+  ]
+}

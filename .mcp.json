@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "line": {
+      "command": "/path/to/bun",
+      "args": ["run", "--cwd", "/path/to/claude-line-channel/plugin-hash", "--shell=bun", "--silent", "start"]
+    }
+  }
+}
