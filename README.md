@@ -365,4 +365,4 @@ MIT
 
 ---
 
-Made with love by **Operator** 🙏
+Made with love by **全謹代書團隊** 🙏
