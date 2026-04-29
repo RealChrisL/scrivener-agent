@@ -137,7 +137,7 @@ flowchart TD
     T3 --> ANALYSE
     ANALYSE --> PRIO{Priority?}
 
-    PRIO -->|急/委託/電話\n[your urgency signals]| HIGH[高優先\nimmediate push to Operator]
+    PRIO -->|急/委託/電話\nyour urgency signals| HIGH[高優先\nimmediate push to Operator]
     PRIO -->|specific case type\npartial questionnaire| MED[一般\ndaily digest only]
     PRIO -->|greeting only\nno case detail| LOW[低優先\nno real-time notify]
 
