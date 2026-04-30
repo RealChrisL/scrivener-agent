@@ -1,8 +1,8 @@
 #!/bin/bash
-# BOT_DIR: the directory where your deployed CLAUDE.md lives.
+# AGENT_DIR: the directory where your deployed CLAUDE.md lives.
 # Defaults to the directory this script resides in.
-BOT_DIR="${BOT_DIR:-$(cd "$(dirname "$0")" && pwd)}"
-PROJ=~/.claude/projects/$(realpath "$BOT_DIR" | sed 's|/|-|g' | sed 's|^-||')
+AGENT_DIR="${AGENT_DIR:-$(cd "$(dirname "$0")" && pwd)}"
+PROJ=~/.claude/projects/$(realpath "$AGENT_DIR" | sed 's|/|-|g' | sed 's|^-||')
 MAX_SIZE=3000000
 
 JSONL=$(ls "$PROJ"/*.jsonl 2>/dev/null | head -1)

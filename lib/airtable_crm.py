@@ -1,5 +1,5 @@
 """
-Airtable CRM module for a LINE bot agent.
+Airtable CRM module for a LINE agent.
 Reads credentials from ~/.claude/channels/line/.env
 Required env vars: AIRTABLE_API_TOKEN, AIRTABLE_BASE_ID
 TABLE_NAME defaults to '客戶紀錄'
@@ -198,15 +198,15 @@ def upsert_customer(user_id: str, analysis: dict) -> tuple[dict, bool]:
         return record, True
 
 
-def get_bot_mode(user_id: str) -> str:
+def get_agent_mode(user_id: str) -> str:
     """
-    Return bot mode for this user based on Airtable status.
+    Return agent mode for this user based on Airtable status.
 
     Simplified 4-state model:
-      進行中      → 'reply'   Bot replies + updates CRM
-      暫停        → 'reply'   Bot replies + updates CRM (no questionnaire push)
-      人工接管中   → 'silent'  Bot does NOT reply, but updates CRM in background
-      已完成      → 'off'     Bot does nothing (terminal)
+      進行中      → 'reply'   Agent replies + updates CRM
+      暫停        → 'reply'   Agent replies + updates CRM (no questionnaire push)
+      人工接管中   → 'silent'  Agent does NOT reply, but updates CRM in background
+      已完成      → 'off'     Agent does nothing (terminal)
 
     Legacy statuses (新進線/跟進中/已委託) map to 'reply' for backward compat.
     """
@@ -222,8 +222,8 @@ def get_bot_mode(user_id: str) -> str:
 
 
 def is_handover(user_id: str) -> bool:
-    """Return True if this user is currently in human handover mode (bot silent)."""
-    return get_bot_mode(user_id) == "silent"
+    """Return True if this user is currently in human handover mode (agent silent)."""
+    return get_agent_mode(user_id) == "silent"
 
 
 def get_stale_records(days: int = 3) -> list[dict]:
@@ -297,9 +297,9 @@ def handle_admin_command(text: str) -> dict | None:
     """
     text = text.strip()
     for cmd, status, label in [
-        ("接管", "人工接管中", "Bot 已靜默，您可直接接手"),
-        ("恢復", "跟進中",    "Bot 已恢復自動回覆"),
-        ("結案", "已完成",    "案件已結案，Bot 退出"),
+        ("接管", "人工接管中", "Agent 已靜默，您可直接接手"),
+        ("恢復", "跟進中",    "Agent 已恢復自動回覆"),
+        ("結案", "已完成",    "案件已結案，Agent 退出"),
         ("查",   None,        ""),
     ]:
         if text.startswith(cmd + " ") or text.startswith(cmd) or text == cmd:

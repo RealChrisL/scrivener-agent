@@ -65,7 +65,7 @@ sequenceDiagram
 
     U->>B: 發送訊息
     B->>B: 檢查 WHITELIST_MODE（config.json）
-    B->>AT: get_bot_mode(user_id)
+    B->>AT: get_agent_mode(user_id)
 
     alt mode = off  [已完成]
         B-->>B: 靜默退出 — 案件已結案
@@ -123,7 +123,7 @@ flowchart TD
     WLCHECK -->|true| WLTEST{是管理員\n或開發者？}
     WLTEST -->|否| IGNORE[靜默忽略]
     WLTEST -->|是| MODECHECK
-    WLCHECK -->|false| MODECHECK{bot_mode?}
+    WLCHECK -->|false| MODECHECK{agent_mode?}
 
     MODECHECK -->|off| EXIT[靜默退出]
     MODECHECK -->|silent| CRMONLY[僅更新 CRM\n不回覆]
@@ -152,7 +152,7 @@ flowchart TD
 ## 專案結構
 
 ```
-line-bot/
+line-agent/
 ├── README.md                      # 英文版本
 ├── README.zh-TW.md                # 本文件（繁體中文）
 ├── CLAUDE.md                      # 代理行為規格 — 角色、路由、CRM 規則
@@ -181,7 +181,7 @@ line-bot/
 
 | 專案路徑 | 部署至 |
 |---------|-------|
-| `CLAUDE.md`、`*.sh`、`.mcp.json`、`.claude/` | `~/line-bot/`（原樣） |
+| `CLAUDE.md`、`*.sh`、`.mcp.json`、`.claude/` | `~/line-agent/`（原樣） |
 | `lib/*.py`、`lib/*.json` | `~/.claude/channels/line/` |
 | `lib/.env.example` → `.env` | `~/.claude/channels/line/.env` |
 | `config.example.json` → `config.json` | `~/.claude/channels/line/config.json` |
@@ -304,7 +304,7 @@ crontab -e
 tmux new-session -d -s watchdog "bash watchdog.sh"
 
 # 在獨立的 tmux 工作階段啟動代理
-tmux new-session -s line-bot "bash launch.sh"
+tmux new-session -s line-agent "bash launch.sh"
 ```
 
 ### 9. 正式上線

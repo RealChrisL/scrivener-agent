@@ -65,7 +65,7 @@ sequenceDiagram
 
     U->>B: sends message
     B->>B: check WHITELIST_MODE (config.json)
-    B->>AT: get_bot_mode(user_id)
+    B->>AT: get_agent_mode(user_id)
 
     alt mode = off  [已完成]
         B-->>B: silent exit — case closed
@@ -123,7 +123,7 @@ flowchart TD
     WLCHECK -->|true| WLTEST{is admin\nor developer?}
     WLTEST -->|no| IGNORE[silently ignore]
     WLTEST -->|yes| MODECHECK
-    WLCHECK -->|false| MODECHECK{bot_mode?}
+    WLCHECK -->|false| MODECHECK{agent_mode?}
 
     MODECHECK -->|off| EXIT[silent exit]
     MODECHECK -->|silent| CRMONLY[upsert CRM only\nno reply]
@@ -152,7 +152,7 @@ flowchart TD
 ## Repository Structure
 
 ```
-line-bot/
+line-agent/
 ├── README.md                      # This file (English)
 ├── README.zh-TW.md                # 繁體中文版本
 ├── CLAUDE.md                      # Agent behavior spec — persona, routing, CRM rules
@@ -181,7 +181,7 @@ line-bot/
 
 | Repo path | Deploy to |
 |-----------|-----------|
-| `CLAUDE.md`, `*.sh`, `.mcp.json`, `.claude/` | `~/line-bot/` (as-is) |
+| `CLAUDE.md`, `*.sh`, `.mcp.json`, `.claude/` | `~/line-agent/` (as-is) |
 | `lib/*.py`, `lib/*.json` | `~/.claude/channels/line/` |
 | `lib/.env.example` → `.env` | `~/.claude/channels/line/.env` |
 | `config.example.json` → `config.json` | `~/.claude/channels/line/config.json` |
@@ -207,8 +207,8 @@ line-bot/
 ### 1. Clone
 
 ```bash
-git clone https://github.com/your-org/line-bot.git
-cd line-bot
+git clone https://github.com/your-org/line-agent.git
+cd line-agent
 ```
 
 ### 2. Configure credentials
@@ -306,7 +306,7 @@ Add:
 tmux new-session -d -s watchdog "bash watchdog.sh"
 
 # Start the agent in its own tmux session
-tmux new-session -s line-bot "bash launch.sh"
+tmux new-session -s line-agent "bash launch.sh"
 ```
 
 ### 9. Go live
@@ -318,14 +318,14 @@ tmux new-session -s line-bot "bash launch.sh"
 
 ---
 
-## Operator Commands (send via LINE DM to the bot)
+## Operator Commands (send via LINE DM to the agent)
 
 | Command | Effect |
 |---------|--------|
 | `查 {姓名}` | Look up Airtable record and return summary |
 | `接管 {姓名}` | Agent goes silent; client notified that a team member will follow up |
 | `接管` | Same, auto-targets the most recent high-priority alert |
-| `恢復 {姓名}` | Bot resumes auto-replies for this client |
+| `恢復 {姓名}` | Agent resumes auto-replies for this client |
 | `結案 {姓名}` | Mark case complete; agent exits permanently for this client |
 | `緊急關閉` | Immediately set `WHITELIST_MODE=true` in config.json and apply it |
 | `已處理` / `已看到` / `收到` | Clear all pending alert resends |
@@ -355,7 +355,7 @@ The `CLAUDE.md` file acts as a persistent behavior specification that Claude rea
 
 Key design decisions:
 
-- **Behavior = plain language** — updating the bot's logic means editing `CLAUDE.md`, not deploying code
+- **Behavior = plain language** — updating the agent's logic means editing `CLAUDE.md`, not deploying code
 - **Python modules = I/O only** — `airtable_crm.py`, `alert_manager.py`, etc. handle external API calls; all decision logic stays in Claude
 - **Per-user context via files** — `split_history.py` fans out the shared log; Claude reads `history/{user_id}.log` before every reply to reconstruct conversation context
 - **5-minute Airtable cache** — `crm_cache.json` reduces API calls; cache is invalidated on every write

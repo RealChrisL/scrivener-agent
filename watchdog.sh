@@ -19,9 +19,9 @@ is_ngrok_up() {
 start_ngrok
 
 while true; do
-  PANE_PID=$(tmux list-panes -t line-bot -F '#{pane_pid}' 2>/dev/null | head -1)
+  PANE_PID=$(tmux list-panes -t line-agent -F '#{pane_pid}' 2>/dev/null | head -1)
   # 自動確認 development channels 對話框
-  tmux send-keys -t line-bot "" Enter 2>/dev/null
+  tmux send-keys -t line-agent "" Enter 2>/dev/null
 
   if [ "$GRACE" -le 0 ] && ! ss -tlnp | grep -q ":$NGROK_PORT "; then
     CLAUDE_PID=$(pstree -p "$PANE_PID" 2>/dev/null | grep -o 'claude([0-9]*)' | head -1 | grep -o '[0-9]*')

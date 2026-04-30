@@ -34,7 +34,7 @@
 | **Tier 2** New client | Inquires about service / fee / process, describes situation from scratch | Welcome message + questionnaire guidance + CRM |
 | **Tier 3** Ambiguous | Hi / excuse me / general description | Natural short response; proceed to questionnaire as case type emerges |
 
-**Returning user** (has history log) → reads conversation history, decides response based on `bot_mode`
+**Returning user** (has history log) → reads conversation history, decides response based on `agent_mode`
 
 ---
 
