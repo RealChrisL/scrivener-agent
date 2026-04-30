@@ -1,0 +1,12 @@
+{
+  "_description": "Example config for a consulting firm. Copy to SERVICEFLOW_DATA_DIR/config.json.",
+  "WHITELIST_MODE": false,
+  "EXISTING_CLIENT_DETECTION": false,
+  "firm_name": "Clearview Strategy Group",
+  "team_name": "Clearview Team",
+  "roles": {
+    "developer": "LINE_USER_ID_OF_DEVELOPER",
+    "admin": "LINE_USER_ID_OF_ENGAGEMENT_MANAGER"
+  },
+  "_notes": "EXISTING_CLIENT_DETECTION=false — all inquiries treated as new (consulting relationships are more fluid). Services: strategy, operations, market entry. High-priority triggers: 'ready to engage', 'board deadline', 'funding round'."
+}

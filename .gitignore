@@ -11,7 +11,7 @@ pending_alerts.json
 unknown-groups.log
 sla.log
 
-# Downloaded media from LINE
+# Downloaded media from channel
 inbox/
 
 # Python

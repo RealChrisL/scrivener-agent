@@ -1,9 +1,12 @@
 """
-Persistent alert manager — resends high-priority notifications every 15 minutes
-until the admin replies "已處理" or the case status changes to 人工接管中.
-Max 3 resends (45 minutes total), then auto-clears.
+Persistent alert manager for ServiceFlow-Agent.
 
-Storage: ~/.claude/channels/line/pending_alerts.json
+Resends high-priority notifications every RESEND_INTERVAL_MINUTES until the
+operator replies with an acknowledgment keyword or the case status changes to
+human_takeover. Maximum MAX_RESENDS attempts before auto-clearing.
+
+Storage: {SERVICEFLOW_DATA_DIR}/pending_alerts.json
+Run by cron every 15 minutes.
 """
 
 import json
@@ -12,15 +15,24 @@ import sys
 import urllib.request
 from datetime import datetime, timezone
 
+DATA_DIR = os.environ.get("SERVICEFLOW_DATA_DIR", os.path.expanduser("~/.claude/channels/line"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Allow running from repo root or deployed location
+_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+sys.path.insert(0, os.path.abspath(_src))
+sys.path.insert(0, DATA_DIR)
+
 from config_loader import get_notify_user_ids
 
-ALERTS_PATH = os.path.expanduser("~/.claude/channels/line/pending_alerts.json")
-ENV_PATH = os.path.expanduser("~/.claude/channels/line/.env")
+ALERTS_PATH = os.path.join(DATA_DIR, "pending_alerts.json")
+ENV_PATH = os.path.join(DATA_DIR, ".env")
 NOTIFY_USER_IDS = get_notify_user_ids()
-ADMIN_USER_ID = NOTIFY_USER_IDS[0] if NOTIFY_USER_IDS else ""
 MAX_RESENDS = 3
 RESEND_INTERVAL_MINUTES = 15
+
+# Operator replies any of these to stop alert resends
+ACK_KEYWORDS = {"acknowledged", "ack", "ok", "noted", "seen"}
 
 
 def _load_env():
@@ -35,14 +47,14 @@ def _load_env():
     return env
 
 
-def _load_alerts():
+def _load_alerts() -> dict:
     if not os.path.exists(ALERTS_PATH):
         return {}
     with open(ALERTS_PATH) as f:
         return json.load(f)
 
 
-def _save_alerts(alerts):
+def _save_alerts(alerts: dict):
     with open(ALERTS_PATH, "w") as f:
         json.dump(alerts, f, ensure_ascii=False, indent=2)
 
@@ -59,8 +71,8 @@ def add_alert(user_id: str, message: str):
     _save_alerts(alerts)
 
 
-def clear_alert(user_id: str):
-    """Clear a pending alert (called when the admin acknowledges or status changes)."""
+def clear_alert(user_id: str) -> bool:
+    """Clear the pending alert for a specific user."""
     alerts = _load_alerts()
     if user_id in alerts:
         del alerts[user_id]
@@ -74,7 +86,7 @@ def clear_all_alerts():
     _save_alerts({})
 
 
-def _send_line_push(message: str):
+def _send_push(message: str):
     env = _load_env()
     token = env.get("LINE_CHANNEL_ACCESS_TOKEN", "")
     for uid in NOTIFY_USER_IDS:
@@ -93,11 +105,10 @@ def _send_line_push(message: str):
 
 def process_pending_alerts():
     """
-    Check all pending alerts and resend if interval has passed.
+    Check all pending alerts and resend those past the interval threshold.
+    Clears alerts automatically when case status is already human_takeover.
     Called by cron every 15 minutes.
     """
-    import sys
-    sys.path.insert(0, os.path.dirname(__file__))
     from airtable_crm import get_record
 
     alerts = _load_alerts()
@@ -109,32 +120,29 @@ def process_pending_alerts():
         last_sent = datetime.fromisoformat(alert["last_sent_at"])
         minutes_elapsed = (now - last_sent).total_seconds() / 60
 
-        # Check if Airtable status already changed to 人工接管中
+        # Auto-clear if operator already took over in CRM
         record = get_record(user_id)
-        if record and record.get("fields", {}).get("進度狀態") == "人工接管中":
-            print(f"Alert cleared for {user_id} — status changed to 人工接管中")
-            continue  # Don't carry over this alert
+        if record and record.get("fields", {}).get("status") == "human_takeover":
+            print(f"Alert cleared for {user_id} — status is human_takeover")
+            continue
 
-        # Max resends reached
         if send_count >= MAX_RESENDS:
             print(f"Alert max resends reached for {user_id} — auto-clearing")
             continue
 
-        # Not yet time to resend
         if minutes_elapsed < RESEND_INTERVAL_MINUTES:
             updated[user_id] = alert
             continue
 
-        # Resend
         parts = alert["message"].split("\n", 1)
         body = parts[1] if len(parts) > 1 else parts[0]
         resend_msg = (
-            f"🔴🔴🔴 重發通知（第{send_count + 1}次）請立即處理\n"
+            f"🔴🔴🔴 Alert Resend #{send_count + 1} — Action Required\n"
             + body
-            + f"\n\n（回覆「已處理」停止通知）"
+            + "\n\n(Reply 'acknowledged' to stop notifications)"
         )
         try:
-            _send_line_push(resend_msg)
+            _send_push(resend_msg)
             alert["last_sent_at"] = now.isoformat()
             alert["send_count"] = send_count + 1
             updated[user_id] = alert
@@ -147,10 +155,9 @@ def process_pending_alerts():
     return len(updated)
 
 
-def handle_acknowledgment(admin_message: str) -> bool:
-    """Returns True if the message is an acknowledgment keyword."""
-    keywords = {"已處理", "已看到", "收到"}
-    return admin_message.strip() in keywords
+def handle_acknowledgment(operator_message: str) -> bool:
+    """Return True if the operator's message is an acknowledgment keyword."""
+    return operator_message.strip().lower() in ACK_KEYWORDS
 
 
 if __name__ == "__main__":

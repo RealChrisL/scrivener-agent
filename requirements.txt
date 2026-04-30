@@ -1,0 +1,9 @@
+# ServiceFlow-Agent — Python dependencies
+#
+# All runtime modules use only the Python standard library (urllib, json, os,
+# re, datetime, pathlib). No pip packages are required.
+#
+# Runtime environment: Python 3.10+
+#
+# For development / testing only:
+#   pip install pytest   # optional — the test suite also runs as a plain script

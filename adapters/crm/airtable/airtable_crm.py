@@ -1,8 +1,12 @@
 """
-Airtable CRM module for a LINE agent.
-Reads credentials from ~/.claude/channels/line/.env
-Required env vars: AIRTABLE_API_TOKEN, AIRTABLE_BASE_ID
-TABLE_NAME defaults to '客戶紀錄'
+Airtable CRM adapter for ServiceFlow-Agent.
+
+Reads credentials from the runtime data directory (SERVICEFLOW_DATA_DIR,
+default: ~/.claude/channels/line). Required env vars in .env:
+  AIRTABLE_API_TOKEN, AIRTABLE_BASE_ID
+  TABLE_NAME  (optional — defaults to 'client_records')
+
+Field names match the schema in config/crm_schema.example.json.
 """
 
 import json
@@ -13,8 +17,9 @@ import urllib.parse
 import urllib.error
 from datetime import datetime, timezone
 
-ENV_PATH = os.path.expanduser("~/.claude/channels/line/.env")
-CACHE_PATH = os.path.expanduser("~/.claude/channels/line/crm_cache.json")
+DATA_DIR = os.environ.get("SERVICEFLOW_DATA_DIR", os.path.expanduser("~/.claude/channels/line"))
+ENV_PATH = os.path.join(DATA_DIR, ".env")
+CACHE_PATH = os.path.join(DATA_DIR, "crm_cache.json")
 CACHE_TTL_SECONDS = 300  # 5 minutes
 
 
@@ -41,7 +46,7 @@ def _cache_get(user_id: str) -> dict | None:
     if not entry:
         return None
     if time.time() - entry.get("ts", 0) > CACHE_TTL_SECONDS:
-        return None  # expired
+        return None
     return entry.get("record")
 
 
@@ -76,7 +81,7 @@ def _get_config():
     env = _load_env()
     token = env.get("AIRTABLE_API_TOKEN", "")
     base_id = env.get("AIRTABLE_BASE_ID", "")
-    table = env.get("TABLE_NAME", "客戶紀錄")
+    table = env.get("TABLE_NAME", "client_records")
     if not token or not base_id:
         raise RuntimeError("AIRTABLE_API_TOKEN and AIRTABLE_BASE_ID must be set in .env")
     return token, base_id, table
@@ -100,12 +105,12 @@ def _api(method, path, data=None):
 
 
 def get_record(user_id: str, bypass_cache: bool = False) -> dict | None:
-    """Return existing Airtable record for userId, or None. Uses local cache."""
+    """Return existing Airtable record for this channel user ID, or None."""
     if not bypass_cache:
         cached = _cache_get(user_id)
         if cached is not None:
             return cached
-    formula = urllib.parse.quote(f"{{LINE用戶ID}}='{user_id}'")
+    formula = urllib.parse.quote(f"{{channel_user_id}}='{user_id}'")
     result = _api("GET", f"?filterByFormula={formula}&maxRecords=1")
     records = result.get("records", [])
     record = records[0] if records else None
@@ -118,19 +123,18 @@ def create_record(data: dict) -> dict:
     payload = {"records": [{"fields": data}]}
     result = _api("POST", "", payload)
     record = result["records"][0]
-    uid = data.get("LINE用戶ID")
+    uid = data.get("channel_user_id")
     if uid:
         _cache_set(uid, record)
     return record
 
 
 def update_record(record_id: str, data: dict, user_id: str | None = None) -> dict:
-    """Update an existing record. Invalidates cache for user_id if provided."""
+    """Update an existing record and invalidate its cache entry."""
     payload = {"records": [{"id": record_id, "fields": data}]}
     result = _api("PATCH", "", payload)
     record = result["records"][0]
-    # Invalidate cache by LINE用戶ID if known
-    uid = user_id or record.get("fields", {}).get("LINE用戶ID")
+    uid = user_id or record.get("fields", {}).get("channel_user_id")
     if uid:
         _cache_invalidate(uid)
     return record
@@ -138,39 +142,39 @@ def update_record(record_id: str, data: dict, user_id: str | None = None) -> dic
 
 def upsert_customer(user_id: str, analysis: dict) -> tuple[dict, bool]:
     """
-    Create or update a customer record from an analysis dict.
-    Returns (record, created) where created=True if new record.
+    Create or update a customer record from a conversation analysis dict.
+    Returns (record, created) where created=True if this is a new record.
 
     Expected analysis keys (all optional):
-        姓名, 性別, 電話, 案件類型, 需求摘要, 客戶Persona,
-        優先級, 優先級判斷原因, Follow-up Action Items (list),
-        對話摘要
+        name, gender, phone, case_type, summary, client_type,
+        priority, priority_reason, action_items (list), conversation_summary,
+        client_scenario, questionnaire_summary
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-    action_items = analysis.get("Follow-up Action Items", [])
+    action_items = analysis.get("action_items", [])
     if isinstance(action_items, list):
-        action_items_str = "\n".join(f"・{i}" for i in action_items)
+        action_items_str = "\n".join(f"• {i}" for i in action_items)
     else:
         action_items_str = str(action_items)
 
     fields = {
-        "LINE用戶ID": user_id,
-        "最後互動時間": now,
+        "channel_user_id": user_id,
+        "last_interaction_at": now,
     }
 
     field_map = {
-        "姓名": "姓名",
-        "性別": "性別",
-        "電話": "電話",
-        "案件類型": "案件類型",
-        "需求摘要": "需求摘要",
-        "客戶類型": "客戶類型",
-        "優先級": "優先級",
-        "優先級判斷原因": "優先級判斷原因",
-        "對話摘要": "對話摘要",
-        "客戶場景描述": "客戶場景描述",
-        "問卷回答摘要": "問卷回答摘要",
+        "name":                   "name",
+        "gender":                 "gender",
+        "phone":                  "phone",
+        "case_type":              "case_type",
+        "summary":                "summary",
+        "client_type":            "client_type",
+        "priority":               "priority",
+        "priority_reason":        "priority_reason",
+        "conversation_summary":   "conversation_summary",
+        "client_scenario":        "client_scenario",
+        "questionnaire_summary":  "questionnaire_summary",
     }
     for src, dst in field_map.items():
         val = analysis.get(src, "")
@@ -178,47 +182,43 @@ def upsert_customer(user_id: str, analysis: dict) -> tuple[dict, bool]:
             fields[dst] = val
 
     if action_items_str:
-        fields["待辦事項"] = action_items_str
+        fields["action_items"] = action_items_str
 
     existing = get_record(user_id)
     if existing:
-        current_status = existing.get("fields", {}).get("進度狀態", "")
-        # Terminal state: never touch the record
-        if current_status == "已完成":
+        current_status = existing.get("fields", {}).get("status", "")
+        if current_status == "completed":
             return existing, False
-        # During handover: update CRM but preserve the status
-        if current_status == "人工接管中":
-            fields.pop("進度狀態", None)
+        if current_status == "human_takeover":
+            fields.pop("status", None)
         record = update_record(existing["id"], fields)
         return record, False
     else:
-        fields["首次進線時間"] = now
-        fields["進度狀態"] = "跟進中"
+        fields["first_contact_at"] = now
+        fields["status"] = "active"
         record = create_record(fields)
         return record, True
 
 
 def get_agent_mode(user_id: str) -> str:
     """
-    Return agent mode for this user based on Airtable status.
+    Return the agent's operating mode for this user based on CRM status.
 
-    Simplified 4-state model:
-      進行中      → 'reply'   Agent replies + updates CRM
-      暫停        → 'reply'   Agent replies + updates CRM (no questionnaire push)
-      人工接管中   → 'silent'  Agent does NOT reply, but updates CRM in background
-      已完成      → 'off'     Agent does nothing (terminal)
-
-    Legacy statuses (新進線/跟進中/已委託) map to 'reply' for backward compat.
+    4-state model:
+      active / in_progress / paused  → 'reply'   Agent replies + updates CRM
+      human_takeover                 → 'silent'  Agent records CRM only, no reply
+      completed                      → 'off'     Agent does nothing (terminal state)
+      no record                      → 'reply'   Default for new users
     """
     existing = get_record(user_id)
     if not existing:
         return "reply"
-    status = existing.get("fields", {}).get("進度狀態", "")
-    if status == "已完成":
+    status = existing.get("fields", {}).get("status", "")
+    if status == "completed":
         return "off"
-    if status == "人工接管中":
+    if status == "human_takeover":
         return "silent"
-    return "reply"  # 進行中, 暫停, legacy statuses
+    return "reply"
 
 
 def is_handover(user_id: str) -> bool:
@@ -227,57 +227,55 @@ def is_handover(user_id: str) -> bool:
 
 
 def get_stale_records(days: int = 3) -> list[dict]:
-    """Return records not updated in the last `days` days, excluding 已完成."""
+    """Return records not updated in the last `days` days, excluding completed."""
     from datetime import timedelta
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     formula = urllib.parse.quote(
-        f"AND(IS_BEFORE({{最後互動時間}}, '{cutoff}'), {{進度狀態}} != '已完成')"
+        f"AND(IS_BEFORE({{last_interaction_at}}, '{cutoff}'), {{status}} != 'completed')"
     )
     result = _api("GET", f"?filterByFormula={formula}&maxRecords=50")
     return result.get("records", [])
 
 
-TABLE_ID = "YOUR_TABLE_ID"  # 客戶紀錄 — find this in your Airtable URL: airtable.com/YOUR_BASE_ID/YOUR_TABLE_ID
+TABLE_ID = "YOUR_TABLE_ID"  # Find this in your Airtable URL: airtable.com/BASE_ID/TABLE_ID
 
 def record_url(base_id: str, record_id: str) -> str:
     return f"https://airtable.com/{base_id}/{TABLE_ID}/{record_id}"
 
 
 def find_record_by_name(name: str) -> dict | None:
-    """Find a record by 姓名 field (partial match)."""
-    formula = urllib.parse.quote(f"FIND('{name}', {{姓名}}) > 0")
+    """Find a record by name field (partial match)."""
+    formula = urllib.parse.quote(f"FIND('{name}', {{name}}) > 0")
     result = _api("GET", f"?filterByFormula={formula}&maxRecords=1")
     records = result.get("records", [])
     return records[0] if records else None
 
 
 def set_status(user_id: str | None = None, name: str | None = None, status: str = "") -> dict | None:
-    """Set 進度狀態 by userId or name. Returns updated record or None."""
+    """Set status field by channel user ID or name. Returns updated record or None."""
     record = get_record(user_id) if user_id else None
     if not record and name:
         record = find_record_by_name(name)
     if not record:
         return None
-    uid = user_id or record.get("fields", {}).get("LINE用戶ID")
-    return update_record(record["id"], {"進度狀態": status}, user_id=uid)
+    uid = user_id or record.get("fields", {}).get("channel_user_id")
+    return update_record(record["id"], {"status": status}, user_id=uid)
 
 
 def _get_last_alert_name() -> str | None:
-    """Return the 姓名 of the most recent pending alert, or None."""
-    import json as _json
-    alerts_path = os.path.expanduser("~/.claude/channels/line/pending_alerts.json")
+    """Return the name from the most recent pending alert, or None."""
+    alerts_path = os.path.join(DATA_DIR, "pending_alerts.json")
     if not os.path.exists(alerts_path):
         return None
     try:
         with open(alerts_path) as f:
-            alerts = _json.load(f)
+            alerts = json.load(f)
         if not alerts:
             return None
-        # Most recent by created_at
         latest_uid = max(alerts, key=lambda u: alerts[u].get("created_at", ""))
         record = get_record(latest_uid)
         if record:
-            return record["fields"].get("姓名")
+            return record["fields"].get("name")
     except Exception:
         pass
     return None
@@ -285,57 +283,55 @@ def _get_last_alert_name() -> str | None:
 
 def handle_admin_command(text: str) -> dict | None:
     """
-    Parse and execute admin commands from the admin/operator.
+    Parse and execute operator commands.
     Returns dict with keys: command, name, record, url, message
     Returns None if not a recognized command.
 
     Supported commands:
-      查 {姓名}      — lookup record
-      接管 [{姓名}]  — set 人工接管中 (no name = last high-priority alert)
-      恢復 [{姓名}]  — set 跟進中
-      結案 [{姓名}]  — set 已完成
+      lookup {name}    — look up a client record
+      takeover {name}  — set status to human_takeover (agent goes silent)
+      resume {name}    — set status to active (agent resumes)
+      close {name}     — set status to completed (case closed)
     """
     text = text.strip()
     for cmd, status, label in [
-        ("接管", "人工接管中", "Agent 已靜默，您可直接接手"),
-        ("恢復", "跟進中",    "Agent 已恢復自動回覆"),
-        ("結案", "已完成",    "案件已結案，Agent 退出"),
-        ("查",   None,        ""),
+        ("takeover", "human_takeover", "Agent is now silent. You have control."),
+        ("resume",   "active",         "Agent has resumed auto-replies."),
+        ("close",    "completed",      "Case closed. Agent has exited."),
+        ("lookup",   None,             ""),
     ]:
-        if text.startswith(cmd + " ") or text.startswith(cmd) or text == cmd:
+        if text.lower().startswith(cmd + " ") or text.lower() == cmd:
             name = text[len(cmd):].strip()
             if not name:
-                if cmd == "查":
-                    return {"command": cmd, "message": f"請輸入姓名，例如：查 陳雅婷"}
-                # No name: fall back to last high-priority alert
+                if cmd == "lookup":
+                    return {"command": cmd, "message": "Please provide a name. Example: lookup Jane Smith"}
                 name = _get_last_alert_name()
                 if not name:
-                    return {"command": cmd, "message": f"找不到最近的高優先案件，請輸入姓名：{cmd} 陳雅婷"}
+                    return {"command": cmd, "message": f"No recent high-priority case found. Specify a name: {cmd} Jane Smith"}
 
             if status:
                 record = set_status(name=name, status=status)
                 if not record:
-                    return {"command": cmd, "message": f"找不到客戶「{name}」，請確認姓名"}
+                    return {"command": cmd, "message": f"Client '{name}' not found. Check the name and try again."}
                 _, base_id, _ = _get_config()
                 url = record_url(base_id, record["id"])
                 return {"command": cmd, "name": name, "record": record, "url": url,
-                        "message": f"✅ {name}｜{label}\n🔗 {url}"}
+                        "message": f"✅ {name} — {label}\n🔗 {url}"}
             else:
-                # 查
                 record = find_record_by_name(name)
                 if not record:
-                    return {"command": cmd, "message": f"找不到客戶「{name}」"}
+                    return {"command": cmd, "message": f"Client '{name}' not found."}
                 f = record["fields"]
                 _, base_id, _ = _get_config()
                 url = record_url(base_id, record["id"])
                 return {
                     "command": cmd, "name": name, "record": record, "url": url,
                     "message": (
-                        f"📋 {f.get('姓名','?')}\n"
-                        f"📞 {f.get('電話','未提供')}\n"
-                        f"案件：{f.get('案件類型','?')} | 狀態：{f.get('進度狀態','?')}\n"
-                        f"優先級：{f.get('優先級','?')}\n"
-                        f"LINE用戶ID：{f.get('LINE用戶ID','?')}\n"
+                        f"📋 {f.get('name', '?')}\n"
+                        f"📞 {f.get('phone', 'not provided')}\n"
+                        f"Case: {f.get('case_type', '?')} | Status: {f.get('status', '?')}\n"
+                        f"Priority: {f.get('priority', '?')}\n"
+                        f"Channel ID: {f.get('channel_user_id', '?')}\n"
                         f"🔗 {url}"
                     )
                 }

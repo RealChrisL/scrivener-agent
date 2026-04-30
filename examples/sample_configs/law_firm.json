@@ -1,0 +1,12 @@
+{
+  "_description": "Example config for a law firm. Copy to SERVICEFLOW_DATA_DIR/config.json.",
+  "WHITELIST_MODE": false,
+  "EXISTING_CLIENT_DETECTION": true,
+  "firm_name": "Acme Legal Partners",
+  "team_name": "Acme Legal",
+  "roles": {
+    "developer": "LINE_USER_ID_OF_DEVELOPER",
+    "admin": "LINE_USER_ID_OF_LEAD_ATTORNEY"
+  },
+  "_notes": "Practice areas: contract review, litigation support, corporate compliance. EXISTING_CLIENT_DETECTION=true because repeat clients are common — agent goes silent for returning clients with prior-case signals."
+}

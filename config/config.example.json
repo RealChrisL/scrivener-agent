@@ -1,0 +1,22 @@
+{
+  "_instructions": "Copy this file to your SERVICEFLOW_DATA_DIR as 'config.json' and fill in your values. Default data dir: ~/.claude/channels/line",
+
+  "WHITELIST_MODE": true,
+  "_WHITELIST_MODE": "true = only developer + admin get responses (soft launch). false = open to all users (production).",
+
+  "EXISTING_CLIENT_DETECTION": true,
+  "_EXISTING_CLIENT_DETECTION": "true = apply Tier 1 routing for returning-client signals (agent goes silent, human handles). false = treat everyone as a new client.",
+
+  "firm_name": "YOUR_FIRM_NAME",
+  "_firm_name": "Used in agent persona and client-facing messages. Replaces {{YOUR_FIRM_NAME}} in CLAUDE.md.",
+
+  "team_name": "YOUR_TEAM_NAME",
+  "_team_name": "The human operator team name used in escalation messages. Replaces {{YOUR_TEAM_NAME}} in CLAUDE.md.",
+
+  "roles": {
+    "developer": "YOUR_DEVELOPER_LINE_USER_ID",
+    "_developer": "LINE userId of the technical operator. Has full access including architecture/system commands.",
+    "admin": "YOUR_ADMIN_LINE_USER_ID",
+    "_admin": "LINE userId of the business operator. Can run: lookup / takeover / resume / close / emergency_close."
+  }
+}

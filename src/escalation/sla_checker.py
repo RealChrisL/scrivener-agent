@@ -1,10 +1,10 @@
 """
-SLA breach checker.
+SLA breach checker for ServiceFlow-Agent.
 Run by cron every 30 minutes.
-Notifies the admin and developer if a client has not been responded to within SLA_HOURS.
 
-A record is considered "responded" if its 進度狀態 is 人工接管中 or 已完成.
-SLA breach = record created > SLA_HOURS ago AND still 跟進中 or 暫停.
+Notifies configured operators if a client has not been responded to within
+SLA_HOURS. A record is "responded" when its status is human_takeover or
+completed. Breach = record created > SLA_HOURS ago AND still active/paused.
 """
 
 import json
@@ -13,14 +13,18 @@ import sys
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.environ.get("SERVICEFLOW_DATA_DIR", os.path.expanduser("~/.claude/channels/line"))
+_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+sys.path.insert(0, os.path.abspath(_src))
+sys.path.insert(0, DATA_DIR)
+
 from airtable_crm import _get_config, record_url
 from config_loader import get_notify_user_ids
 
 SLA_HOURS = 4
 NOTIFY_USER_IDS = get_notify_user_ids()
-ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
-SLA_LOG = os.path.join(os.path.dirname(__file__), "sla.log")
+ENV_PATH = os.path.join(DATA_DIR, ".env")
+SLA_LOG = os.path.join(DATA_DIR, "sla.log")
 
 
 def _load_env():
@@ -34,7 +38,7 @@ def _load_env():
     return env
 
 
-def _push(token, message):
+def _push(token: str, message: str):
     for uid in NOTIFY_USER_IDS:
         payload = json.dumps({"to": uid, "messages": [{"type": "text", "text": message}]}).encode()
         req = urllib.request.Request(
@@ -51,8 +55,7 @@ def main():
     import urllib.parse
     encoded_table = urllib.parse.quote(table_name)
 
-    # Fetch all open records (跟進中 or 暫停)
-    filter_formula = urllib.parse.quote("OR({進度狀態}='跟進中',{進度狀態}='暫停')")
+    filter_formula = urllib.parse.quote("OR({status}='active',{status}='paused')")
     url = f"https://api.airtable.com/v0/{base_id}/{encoded_table}?filterByFormula={filter_formula}&maxRecords=100"
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"})
     res = urllib.request.urlopen(req)
@@ -71,12 +74,12 @@ def main():
         if age_hours >= SLA_HOURS:
             f = r.get("fields", {})
             breaches.append({
-                "name": f.get("姓名", "未知"),
-                "case": f.get("案件類型", "未知"),
-                "phone": f.get("電話", "未提供"),
-                "status": f.get("進度狀態", ""),
+                "name":      f.get("name", "Unknown"),
+                "case_type": f.get("case_type", "Unknown"),
+                "phone":     f.get("phone", "not provided"),
+                "status":    f.get("status", ""),
                 "age_hours": round(age_hours, 1),
-                "url": record_url(base_id, r["id"]),
+                "url":       record_url(base_id, r["id"]),
             })
 
     if not breaches:
@@ -86,18 +89,18 @@ def main():
     env = _load_env()
     token = env.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 
-    lines = [f"🟡 SLA 逾時提醒｜{len(breaches)} 筆未回覆超過 {SLA_HOURS} 小時\n"]
+    lines = [f"🟡 SLA Breach Alert | {len(breaches)} case(s) unresponded for over {SLA_HOURS} hours\n"]
     for b in breaches:
         lines.append(
-            f"👤 {b['name']}｜{b['case']}\n"
-            f"   📞 {b['phone']}｜{b['status']}\n"
-            f"   ⏱ 已等待 {b['age_hours']} 小時\n"
+            f"👤 {b['name']} | {b['case_type']}\n"
+            f"   📞 {b['phone']} | {b['status']}\n"
+            f"   ⏱ Waiting {b['age_hours']} hours\n"
             f"   🔗 {b['url']}"
         )
 
     message = "\n".join(lines)
     if len(message) > 4900:
-        message = message[:4900] + "\n...（更多請查看 Airtable）"
+        message = message[:4900] + "\n...(see Airtable for more)"
 
     _push(token, message)
     print(f"Sent SLA breach notification for {len(breaches)} records.")

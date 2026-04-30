@@ -1,0 +1,12 @@
+{
+  "_description": "Example config for a medical clinic. Copy to SERVICEFLOW_DATA_DIR/config.json.",
+  "WHITELIST_MODE": true,
+  "EXISTING_CLIENT_DETECTION": true,
+  "firm_name": "Maplewood Family Clinic",
+  "team_name": "Maplewood Team",
+  "roles": {
+    "developer": "LINE_USER_ID_OF_DEVELOPER",
+    "admin": "LINE_USER_ID_OF_CLINIC_MANAGER"
+  },
+  "_notes": "WHITELIST_MODE=true for soft launch — staff testing only. Services: GP appointments, specialist referrals, health screening packages. Set WHITELIST_MODE=false when ready for patients."
+}

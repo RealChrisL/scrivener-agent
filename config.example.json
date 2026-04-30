@@ -1,9 +1,0 @@
-{
-  "WHITELIST_MODE": true,
-  "EXISTING_CLIENT_DETECTION": true,
-  "office_name": "YOUR_FIRM_NAME",
-  "roles": {
-    "developer": "YOUR_DEVELOPER_LINE_USER_ID",
-    "admin": "YOUR_ADMIN_LINE_USER_ID"
-  }
-}

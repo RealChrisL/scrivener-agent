@@ -4,24 +4,32 @@
 
 </div>
 
-# 全謹代書 LINE Agent
+# ServiceFlow-Agent
 
-A 24/7 AI-powered client intake and CRM automation system for professional services businesses, built on **Claude Code + LINE Messaging API**.
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
+[![Claude Code](https://img.shields.io/badge/powered%20by-Claude%20Code-orange)](https://claude.ai/code)
 
-The agent acts as a professional consultant, screens incoming clients, guides them through a service questionnaire, auto-logs everything to Airtable CRM, and escalates urgent cases to the team in real time — so staff only focus on high-value cases.
+**An autonomous Claude Code–powered messaging intake and CRM orchestration framework for professional services.**
+
+ServiceFlow-Agent connects a chat channel (LINE implemented; WhatsApp/Telegram extensible) to an LLM agent that screens incoming clients, guides them through a conversational service questionnaire, auto-logs everything to Airtable CRM, escalates urgent cases to your team in real time, and supports human operator takeover — all configurable via a plain-language `CLAUDE.md` with no code deployment required.
+
+Built for: law firms, consulting firms, accounting firms, clinics, agencies, customer support teams, and any appointment-based professional service intake workflow.
 
 ---
 
 ## Features
 
-- **Zero-leakage intake** — every message from every user creates a CRM record, even silent ones
-- **Intelligent tier routing** — auto-detects existing clients (silent), new clients (full welcome), and ambiguous messages (natural response)
-- **Conversational questionnaire** — asks 1–2 questions per turn across 5 service areas
-- **Real-time escalation** — pushes urgent cases (intent/urgency/contact signals) to the operator instantly via LINE DM
-- **Persistent alerts** — unacknowledged high-priority cases are re-sent every 15 minutes (max 3×)
-- **Human handover protocol** — operator sends `接管 {姓名}` to silence the agent; `恢復` to resume
-- **Daily digest** — stale cases summarized every morning at 09:00 (configure timezone in cron)
-- **Emergency kill switch** — `緊急關閉` instantly re-enables whitelist mode
+- **Zero-leakage intake** — every message creates a CRM record, including silent cases
+- **Intelligent tier routing** — auto-detects existing clients (silent handover), new clients (full welcome + questionnaire), and ambiguous messages (natural response)
+- **Conversational questionnaire** — asks 1–2 questions per turn; never dumps a form at the user
+- **Real-time escalation** — pushes urgent cases (intent / urgency / phone / domain signals) to the operator instantly via LINE DM
+- **Persistent alerts** — unacknowledged high-priority cases re-sent every 15 minutes (up to 3×)
+- **Human handover protocol** — `takeover {name}` silences the agent; `resume {name}` restores it
+- **SLA monitoring** — alerts the operator if any open case exceeds the response threshold
+- **Daily digest** — stale cases summarized every morning at 09:00 (configurable cron)
+- **Emergency kill switch** — `emergency_close` instantly re-enables whitelist mode
+- **Behavior = plain language** — all logic lives in `CLAUDE.md`; no redeployment for behavior changes
 
 ---
 
@@ -29,122 +37,54 @@ The agent acts as a professional consultant, screens incoming clients, guides th
 
 ```mermaid
 graph TD
-    A[LINE User] -->|message| B[LINE Platform]
-    B -->|webhook POST| C[bun MCP Server\nport 3456 via ngrok]
-    C -->|MCP notification| D[Claude Code Session\nCLAUDE.md = the brain]
-    D -->|reads| E[Per-user history log\n~/.claude/channels/line/history/]
-    D -->|checks status| F[Airtable CRM]
-    D -->|reply tool| C
-    C -->|push| B
-    B -->|deliver| A
-    D -->|upsert| F
-    D -->|LINE push API| G[Operator + Developer]
+    U[Chat User]       -->|message| LP[LINE Platform]
+    LP                 -->|webhook POST| MCP[bun MCP Server\nport 3456 via ngrok]
+    MCP                -->|MCP notification| CC[Claude Code Session\nCLAUDE.md = behavior spec]
+    CC -->|reads| HL[Per-user history log]
+    CC -->|get_agent_mode / upsert| AT[(Airtable CRM)]
+    CC -->|reply tool| MCP
+    MCP -->|push| LP
+    LP  -->|deliver| U
+    CC  -->|LINE push API| OP[Operator + Developer]
+    WD[watchdog.sh]    -->|monitors + restarts| MCP
+    WD                 -->|monitors + restarts| NG[ngrok]
+    CR[cron jobs]      -->|split / alert / digest / sla| AT
 
-    H[ngrok] -->|tunnel :3456| B
-    I[watchdog.sh] -->|monitors| C
-    I -->|monitors & restarts| H
-
-    J[cron every 1 min] -->|split_history.py| E
-    K[cron every 15 min] -->|alert_manager.py| G
-    L[cron 00:30 UTC daily] -->|daily_followup.py| G
-
-    style D fill:#f0f4ff,stroke:#4a6fa5
-    style F fill:#e8f5e9,stroke:#388e3c
+    style CC fill:#f0f4ff,stroke:#4a6fa5
+    style AT fill:#e8f5e9,stroke:#388e3c
 ```
 
 ---
 
-## Message Handling Flow
+## Message Flow
 
 ```mermaid
 sequenceDiagram
-    participant U as LINE User
-    participant B as Agent (Claude)
-    participant AT as Airtable
-    participant N as Operator
+    participant U  as Chat User
+    participant AG as Agent (Claude)
+    participant AT as Airtable CRM
+    participant OP as Operator
 
-    U->>B: sends message
-    B->>B: check WHITELIST_MODE (config.json)
-    B->>AT: get_agent_mode(user_id)
+    U->>AG: sends message
+    AG->>AG: check WHITELIST_MODE
+    AG->>AT: get_agent_mode(user_id)
 
-    alt mode = off  [已完成]
-        B-->>B: silent exit — case closed
-    else mode = silent  [人工接管中]
-        B->>AT: upsert CRM (silent, no reply)
+    alt mode = off  [completed]
+        AG-->>AG: silent exit
+    else mode = silent  [human_takeover]
+        AG->>AT: upsert CRM only
     else mode = reply  [active]
-        B->>B: read history/{user_id}.log
-        alt No history log → new user
-            B->>B: Tier 1 / Tier 2 / Tier 3 routing
+        AG->>AG: read history/{user_id}.log
+        alt No history — new user
+            AG->>AG: Tier 1 / Tier 2 / Tier 3 routing
         end
-        B->>U: reply via LINE
-        B->>AT: upsert CRM record
-        alt 高優先 signal detected
-            B->>N: LINE push notification
-            B->>B: register pending_alerts.json
+        AG->>U: reply via LINE
+        AG->>AT: upsert CRM record
+        alt high_priority signal
+            AG->>OP: immediate push notification
+            AG->>AG: register pending_alerts.json
         end
     end
-```
-
----
-
-## Agent State Machine
-
-```mermaid
-stateDiagram-v2
-    [*] --> NewUser : first message arrives
-
-    NewUser --> Tier1_Silent : existing client signals\n(已匯款/prior reference/appointment)
-    NewUser --> Tier2_Active : new inquiry\n(service / fee / process question)
-    NewUser --> Tier3_Active : ambiguous\n(你好 / 請問)
-
-    Tier1_Silent --> [*] : terminal — Operator handles via OA Manager
-
-    Tier2_Active --> Handover : Operator sends 接管
-    Tier3_Active --> Handover : Operator sends 接管
-    Handover --> Tier2_Active : Operator sends 恢復
-    Handover --> Closed : Operator sends 結案
-    Tier2_Active --> Closed : Operator sends 結案
-    Tier3_Active --> Closed : Operator sends 結案
-
-    Closed --> [*] : terminal — agent completely exits
-
-    note right of Tier2_Active : Agent replies\nguides questionnaire\nupdates CRM
-    note right of Handover : Agent silent\nCRM still updated\nOperator uses OA Manager
-    note right of Closed : All events ignored\nRecord locked (已完成)
-```
-
----
-
-## CRM Priority Logic
-
-```mermaid
-flowchart TD
-    MSG[Incoming message] --> WLCHECK{WHITELIST_MODE?}
-    WLCHECK -->|true| WLTEST{is admin\nor developer?}
-    WLTEST -->|no| IGNORE[silently ignore]
-    WLTEST -->|yes| MODECHECK
-    WLCHECK -->|false| MODECHECK{agent_mode?}
-
-    MODECHECK -->|off| EXIT[silent exit]
-    MODECHECK -->|silent| CRMONLY[upsert CRM only\nno reply]
-    MODECHECK -->|reply| TIER{Tier routing}
-
-    TIER -->|Tier 1 signals| T1[CRM: 人工接管中\nagent silent permanently]
-    TIER -->|Tier 2| T2[welcome greeting\n+ questionnaire]
-    TIER -->|Tier 3| T3[natural short reply]
-
-    T2 --> ANALYSE[analyse full conversation]
-    T3 --> ANALYSE
-    ANALYSE --> PRIO{Priority?}
-
-    PRIO -->|急/委託/電話\nyour urgency signals| HIGH[高優先\nimmediate push to Operator]
-    PRIO -->|specific case type\npartial questionnaire| MED[一般\ndaily digest only]
-    PRIO -->|greeting only\nno case detail| LOW[低優先\nno real-time notify]
-
-    HIGH --> ALERT[register pending_alerts.json\nresend every 15min × 3]
-    HIGH --> UPSERT[upsert Airtable]
-    MED --> UPSERT
-    LOW --> UPSERT
 ```
 
 ---
@@ -152,39 +92,61 @@ flowchart TD
 ## Repository Structure
 
 ```
-line-agent/
-├── README.md                      # This file (English)
-├── README.zh-TW.md                # 繁體中文版本
-├── CLAUDE.md                      # Agent behavior spec — persona, routing, CRM rules
-├── SYSTEM_OVERVIEW.md             # Operator quick-reference (English)
-├── SYSTEM_OVERVIEW.zh-TW.md      # 操作員快速參考（繁體中文）
-├── config.example.json            # Config template — copy to ~/.claude/channels/line/config.json
-├── launch.sh                      # Start Claude session (auto-restart + JSONL trimming)
-├── start.sh                       # Start LINE webhook MCP server (bun)
-├── watchdog.sh                    # Process guardian — keeps ngrok + bun alive
-├── .mcp.json                      # MCP plugin wiring (bun ↔ Claude)
-├── .claude/
-│   └── settings.local.json        # Claude Code auto-allow permissions
-└── lib/                           # Runtime Python modules
-    ├── airtable_crm.py            # Core CRM: upsert, status, admin commands, cache
-    ├── alert_manager.py           # Persistent alert resend (15 min, max 3×)
-    ├── config_loader.py           # Reads config.json — shared by all Python modules
-    ├── split_history.py           # Fan-out shared history.log → per-user logs
-    ├── daily_followup.py          # Daily stale-case digest to operator
-    ├── sla_checker.py             # SLA breach detector (4 hr threshold)
-    ├── test_scenarios.py          # Unit + E2E tests (53 unit / 6 E2E)
-    ├── business_guide.json        # Service areas, questionnaires, pricing template
-    └── .env.example               # Credentials template
+ServiceFlow-Agent/
+├── CLAUDE.md                    # Agent behavior spec — persona, routing, CRM rules
+├── README.md
+├── README.zh-TW.md
+├── LICENSE
+├── CONTRIBUTING.md
+├── requirements.txt
+├── .env.example
+├── .gitignore
+├── config/
+│   ├── config.example.json      # Runtime config template
+│   └── crm_schema.example.json  # Airtable field schema reference
+├── adapters/
+│   ├── channel/
+│   │   ├── README.md            # How to add a channel adapter
+│   │   └── line/
+│   │       ├── launch.sh        # Start Claude session (auto-restart + context trimming)
+│   │       ├── start.sh         # Start LINE webhook MCP server (bun)
+│   │       ├── watchdog.sh      # Process guardian — keeps ngrok + bun alive
+│   │       └── .mcp.json        # MCP plugin wiring
+│   ├── crm/
+│   │   ├── README.md            # How to add a CRM adapter
+│   │   └── airtable/
+│   │       └── airtable_crm.py  # Airtable CRM adapter
+│   └── llm/
+│       └── README.md            # LLM runtime notes
+├── src/
+│   ├── config_loader.py         # Runtime config reader (shared by all modules)
+│   ├── escalation/
+│   │   ├── alert_manager.py     # Persistent alert resend (15 min × 3)
+│   │   └── sla_checker.py       # SLA breach detector
+│   ├── history/
+│   │   └── split_history.py     # Fan-out shared log → per-user logs
+│   ├── scheduler/
+│   │   └── daily_followup.py    # Daily stale-case digest
+│   └── test_scenarios.py        # Unit tests — customize for your service areas
+├── examples/
+│   ├── business_guide.example.json
+│   ├── sample_configs/
+│   │   ├── law_firm.json
+│   │   ├── clinic.json
+│   │   └── consulting.json
+│   └── sample_conversations/
+│       └── README.md
+└── docs/
+    ├── architecture.md
+    ├── compliance.md
+    ├── setup.md
+    └── diagrams/
+        ├── system_overview.md
+        ├── message_flow.md
+        ├── state_machine.md
+        ├── escalation_pipeline.md
+        └── deployment_topology.md
 ```
-
-**Runtime deployment paths:**
-
-| Repo path | Deploy to |
-|-----------|-----------|
-| `CLAUDE.md`, `*.sh`, `.mcp.json`, `.claude/` | `~/line-agent/` (as-is) |
-| `lib/*.py`, `lib/*.json` | `~/.claude/channels/line/` |
-| `lib/.env.example` → `.env` | `~/.claude/channels/line/.env` |
-| `config.example.json` → `config.json` | `~/.claude/channels/line/config.json` |
 
 ---
 
@@ -193,190 +155,172 @@ line-agent/
 | Dependency | Notes |
 |-----------|-------|
 | [Claude Code CLI](https://claude.ai/code) | `claude` binary in PATH |
-| [Bun](https://bun.sh) | `~/.bun/bin/bun` (used by MCP server) |
-| [LINE Developers](https://developers.line.biz) | Messaging API channel with webhook enabled |
-| [Airtable](https://airtable.com) | Base + API token (see field schema below) |
+| [Bun](https://bun.sh) | `~/.bun/bin/bun` (used by LINE MCP server) |
+| [LINE Developers account](https://developers.line.biz) | Messaging API channel with webhook enabled |
+| [Airtable account](https://airtable.com) | Base + API token |
 | [ngrok](https://ngrok.com) | Exposes local port 3456 to LINE webhook |
 | tmux | Session management for agent + watchdog |
-| Python 3.10+ | For CRM scripts |
+| Python 3.10+ | For CRM and scheduler scripts (stdlib only — no pip install) |
 
 ---
 
-## Setup
-
-### 1. Clone
+## Quick Start
 
 ```bash
-git clone https://github.com/your-org/line-agent.git
-cd line-agent
-```
+# 1. Clone
+git clone https://github.com/your-org/ServiceFlow-Agent.git
+cd ServiceFlow-Agent
 
-### 2. Configure credentials
-
-```bash
+# 2. Configure credentials
 mkdir -p ~/.claude/channels/line
-cp lib/.env.example ~/.claude/channels/line/.env
-# Edit .env — fill in all four values
-```
+cp .env.example ~/.claude/channels/line/.env
+# Edit .env with your LINE + Airtable credentials
 
-### 3. Deploy runtime library
+# 3. Deploy runtime library
+cp adapters/crm/airtable/airtable_crm.py src/config_loader.py \
+   src/escalation/alert_manager.py src/escalation/sla_checker.py \
+   src/history/split_history.py src/scheduler/daily_followup.py \
+   ~/.claude/channels/line/
 
-```bash
-cp lib/*.py lib/*.json ~/.claude/channels/line/
-```
+# 4. Configure the agent
+cp config/config.example.json ~/.claude/channels/line/config.json
+# Edit config.json — set firm_name, team_name, roles
+cp examples/business_guide.example.json ~/.claude/channels/line/business_guide.json
+# Edit business_guide.json — add your real service areas and questionnaires
 
-### 4. Create config.json
+# 5. Edit CLAUDE.md — replace {{YOUR_FIRM_NAME}} and {{YOUR_TEAM_NAME}},
+#    and add your domain-specific urgency signals
 
-```bash
-cp config.example.json ~/.claude/channels/line/config.json
-```
-
-Open `~/.claude/channels/line/config.json` and fill in your values:
-
-```json
-{
-  "WHITELIST_MODE": true,
-  "EXISTING_CLIENT_DETECTION": true,
-  "office_name": "Your Firm Name",
-  "roles": {
-    "developer": "YOUR_DEVELOPER_LINE_USER_ID",
-    "admin": "YOUR_ADMIN_LINE_USER_ID"
-  }
-}
-```
-
-To find a LINE user ID: the agent receives it in every webhook event. Check `history.log` after your first message.
-
-### 5. Set up Airtable
-
-Create a table named `客戶紀錄` with these fields:
-
-| Field name | Field type |
-|-----------|-----------|
-| `LINE用戶ID` | Single line text |
-| `姓名` | Single line text |
-| `性別` | Single select (男 / 女 / 未知) |
-| `電話` | Phone number |
-| `案件類型` | Single select — add your service area names + 其他 |
-| `需求摘要` | Long text |
-| `客戶類型` | Single select (急需解決 / 主動諮詢 / 資訊收集 / 觀望中) |
-| `優先級` | Single select (高優先 / 一般 / 低優先) |
-| `優先級判斷原因` | Long text |
-| `進度狀態` | Single select (跟進中 / 進行中 / 暫停 / 人工接管中 / 已完成) |
-| `待辦事項` | Long text |
-| `對話摘要` | Long text |
-| `客戶場景描述` | Long text |
-| `問卷回答摘要` | Long text |
-| `首次進線時間` | Date (include time, UTC) |
-| `最後互動時間` | Date (include time, UTC) |
-
-### 6. Install MCP plugin
-
-The LINE channel MCP plugin must be installed in Claude Code:
-
-```bash
+# 6. Install MCP plugin
 claude mcp add claude-line-channel
-```
 
-Verify `.mcp.json` points to the installed plugin path (bun runtime path may differ per system).
-
-### 7. Install cron jobs
-
-```bash
+# 7. Set up cron jobs (see docs/setup.md)
 crontab -e
+
+# 8. Launch
+tmux new-session -d -s watchdog "bash adapters/channel/line/watchdog.sh"
+tmux new-session -s line-agent "bash adapters/channel/line/launch.sh"
 ```
 
-Add:
-
-```cron
-# Split shared history into per-user logs every minute
-* * * * * python3 ~/.claude/channels/line/split_history.py >> ~/.claude/channels/line/history/.split.log 2>&1
-
-# Resend unacknowledged high-priority alerts every 15 minutes
-*/15 * * * * python3 ~/.claude/channels/line/alert_manager.py >> ~/.claude/channels/line/alert.log 2>&1
-
-# Daily stale-case digest at 09:00 local time (adjust UTC offset for your timezone)
-30 1 * * * python3 ~/.claude/channels/line/daily_followup.py >> ~/.claude/channels/line/followup.log 2>&1
-```
-
-### 8. Launch
-
-```bash
-# Start process guardian (ngrok + bun watchdog) in background
-tmux new-session -d -s watchdog "bash watchdog.sh"
-
-# Start the agent in its own tmux session
-tmux new-session -s line-agent "bash launch.sh"
-```
-
-### 9. Go live
-
-1. In LINE Developers console, set webhook URL to your ngrok URL + `/webhook`
-2. Enable webhook, disable auto-reply
-3. Test by messaging the OA from your LINE account
-4. When ready to open to the public: edit `~/.claude/channels/line/config.json`, set `"WHITELIST_MODE": false`
+Full setup guide: [docs/setup.md](docs/setup.md)
 
 ---
 
-## Operator Commands (send via LINE DM to the agent)
+## Configuration Flags
 
-| Command | Effect |
-|---------|--------|
-| `查 {姓名}` | Look up Airtable record and return summary |
-| `接管 {姓名}` | Agent goes silent; client notified that a team member will follow up |
-| `接管` | Same, auto-targets the most recent high-priority alert |
-| `恢復 {姓名}` | Agent resumes auto-replies for this client |
-| `結案 {姓名}` | Mark case complete; agent exits permanently for this client |
-| `緊急關閉` | Immediately set `WHITELIST_MODE=true` in config.json and apply it |
-| `已處理` / `已看到` / `收到` | Clear all pending alert resends |
-
-**Important:** Always send `接管` before replying via OA Manager — otherwise both the agent and the human operator reply to the client simultaneously.
-
----
-
-## Configuration Flags (in `~/.claude/channels/line/config.json`)
+Edit `~/.claude/channels/line/config.json`:
 
 | Flag | Default | Effect |
 |------|---------|--------|
-| `WHITELIST_MODE: true` | Enabled | Only `developer` and `admin` get responses (soft launch mode) |
-| `WHITELIST_MODE: false` | — | All users accepted (production mode) |
-| `EXISTING_CLIENT_DETECTION: true` | Enabled | Tier 1 routing active — existing client signals trigger silent CRM |
-| `EXISTING_CLIENT_DETECTION: false` | — | Everyone treated as new client (Tier 2/3 only) |
-
-Edit `config.json` to change flags — or send `緊急關閉` for the emergency whitelist toggle.
+| `WHITELIST_MODE: true` | On | Only `developer` and `admin` get responses (soft launch) |
+| `WHITELIST_MODE: false` | — | All users accepted (production) |
+| `EXISTING_CLIENT_DETECTION: true` | On | Returning-client signals trigger Tier 1 silent CRM |
+| `EXISTING_CLIENT_DETECTION: false` | — | Everyone treated as a new client |
 
 ---
 
-## How Claude Code drives this
+## Airtable Field Schema
 
-This system uses **Claude Code** (the CLI) as the agent runtime — not a traditional web server with hardcoded logic.
+Create a table named `client_records` (or set `TABLE_NAME` in `.env`):
 
-The `CLAUDE.md` file acts as a persistent behavior specification that Claude reads at the start of every session. The LINE MCP plugin delivers webhook events as conversational notifications. Claude processes each event, decides how to respond, runs CRM pipelines via `Bash` tool calls, and replies via the `mcp__line__reply` tool.
+| Field | Type |
+|-------|------|
+| `channel_user_id` | Single line text — primary key |
+| `name` | Single line text |
+| `gender` | Single select: male / female / unknown |
+| `phone` | Phone number |
+| `case_type` | Single select — add your service area names + `other` |
+| `summary` | Long text |
+| `client_type` | Single select: urgent / proactive / exploratory / watching |
+| `priority` | Single select: high_priority / normal / low_priority |
+| `priority_reason` | Long text |
+| `status` | Single select: active / in_progress / paused / human_takeover / completed |
+| `action_items` | Long text |
+| `conversation_summary` | Long text |
+| `client_scenario` | Long text |
+| `questionnaire_summary` | Long text |
+| `first_contact_at` | Date (with time, UTC) |
+| `last_interaction_at` | Date (with time, UTC) |
 
-Key design decisions:
+Full schema: [config/crm_schema.example.json](config/crm_schema.example.json)
 
-- **Behavior = plain language** — updating the agent's logic means editing `CLAUDE.md`, not deploying code
-- **Python modules = I/O only** — `airtable_crm.py`, `alert_manager.py`, etc. handle external API calls; all decision logic stays in Claude
-- **Per-user context via files** — `split_history.py` fans out the shared log; Claude reads `history/{user_id}.log` before every reply to reconstruct conversation context
-- **5-minute Airtable cache** — `crm_cache.json` reduces API calls; cache is invalidated on every write
+---
+
+## Operator Commands
+
+Send via LINE DM to the agent's official account:
+
+| Command | Effect |
+|---------|--------|
+| `lookup {name}` | Look up Airtable record and return a summary |
+| `takeover {name}` | Agent goes silent; client notified a team member will follow up |
+| `takeover` | Same — auto-targets the most recent high-priority alert |
+| `resume {name}` | Agent resumes auto-replies for this client |
+| `close {name}` | Mark case complete; agent exits permanently for this client |
+| `emergency_close` | Immediately set `WHITELIST_MODE=true` in config.json |
+| `acknowledged` / `ack` / `ok` | Clear all pending alert resends |
+
+**Always send `takeover` before replying via OA Manager** — otherwise both the agent and operator reply to the client simultaneously.
+
+---
+
+## Cron Setup
+
+```cron
+* * * * *    python3 ~/.claude/channels/line/split_history.py  >> ~/.claude/channels/line/history/.split.log 2>&1
+*/15 * * * * python3 ~/.claude/channels/line/alert_manager.py  >> ~/.claude/channels/line/alert.log 2>&1
+30 1 * * *   python3 ~/.claude/channels/line/daily_followup.py >> ~/.claude/channels/line/followup.log 2>&1
+*/30 * * * * python3 ~/.claude/channels/line/sla_checker.py    >> ~/.claude/channels/line/sla.log 2>&1
+```
+
+---
+
+## How Claude Code Drives This
+
+ServiceFlow-Agent uses **Claude Code** (the CLI) as the agent runtime — not a web server with hardcoded logic. `CLAUDE.md` is a persistent behavior spec that Claude reads at session startup. The LINE MCP plugin delivers webhook events as conversational notifications; Claude processes each one, runs CRM pipelines via `Bash` tool calls, and replies via `mcp__line__reply`.
+
+- **Behavior = plain language** — logic changes mean editing `CLAUDE.md`, not deploying code
+- **Python modules = I/O only** — all decisions stay in Claude; modules only handle API calls
+- **Per-user context via files** — `split_history.py` fans out the shared log; Claude reads `history/{user_id}.log` before every reply
+- **5-minute Airtable cache** — `crm_cache.json` reduces API calls; invalidated on every write
+
+---
+
+## Extending
+
+- **New channel** (WhatsApp, Telegram, Webchat): [adapters/channel/README.md](adapters/channel/README.md)
+- **New CRM** (HubSpot, Sheets, Notion): [adapters/crm/README.md](adapters/crm/README.md)
+- **New behavior** (persona, routing, urgency signals): edit `CLAUDE.md` — no code changes
 
 ---
 
 ## Running Tests
 
 ```bash
-cd ~/.claude/channels/line
-python3 test_scenarios.py
+export SERVICEFLOW_DATA_DIR=~/.claude/channels/line
+python3 src/test_scenarios.py
 ```
 
-Expected output: 53 unit tests + 6 E2E scenario tests, all passing.
+Customize `SERVICE_KWS` and `HP_PATTERNS` in `src/test_scenarios.py` to match your service areas.
+
+---
+
+## Documentation
+
+| | |
+|-|-|
+| [docs/setup.md](docs/setup.md) | Full deployment guide |
+| [docs/architecture.md](docs/architecture.md) | Component architecture |
+| [docs/compliance.md](docs/compliance.md) | Privacy and legal notes |
+| [docs/diagrams/](docs/diagrams/) | Mermaid diagrams |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contributor guide |
 
 ---
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
 
 ---
 
-Made with love by **全謹代書團隊** 🙏
+*Built with [Claude Code](https://claude.ai/code) · Contributions welcome*

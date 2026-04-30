@@ -1,0 +1,61 @@
+{
+  "_description": "Airtable field schema for ServiceFlow-Agent. Create a table named per TABLE_NAME in .env (default: client_records). All fields except channel_user_id are optional but strongly recommended.",
+  "table_name": "client_records",
+  "fields": [
+    {
+      "name": "channel_user_id",
+      "type": "single_line_text",
+      "required": true,
+      "notes": "Unique user ID from the channel (e.g. LINE userId). Primary lookup key — used in filterByFormula."
+    },
+    { "name": "name",          "type": "single_line_text" },
+    {
+      "name": "gender",
+      "type": "single_select",
+      "options": ["male", "female", "unknown"]
+    },
+    { "name": "phone", "type": "phone_number" },
+    {
+      "name": "case_type",
+      "type": "single_select",
+      "options": ["[your service A]", "[your service B]", "[your service C]", "other"],
+      "notes": "Add your own service area names to match business_guide.json"
+    },
+    { "name": "summary",       "type": "long_text" },
+    {
+      "name": "client_type",
+      "type": "single_select",
+      "options": ["urgent", "proactive", "exploratory", "watching"]
+    },
+    {
+      "name": "priority",
+      "type": "single_select",
+      "options": ["high_priority", "normal", "low_priority"]
+    },
+    { "name": "priority_reason",       "type": "long_text" },
+    {
+      "name": "status",
+      "type": "single_select",
+      "options": ["active", "in_progress", "paused", "human_takeover", "completed"],
+      "notes": "active/in_progress/paused → agent replies; human_takeover → agent silent; completed → terminal"
+    },
+    { "name": "action_items",          "type": "long_text" },
+    { "name": "conversation_summary",  "type": "long_text" },
+    {
+      "name": "client_scenario",
+      "type": "long_text",
+      "notes": "Auto-generated narrative for marketing/case-study use (anonymized by the agent)"
+    },
+    { "name": "questionnaire_summary", "type": "long_text" },
+    {
+      "name": "first_contact_at",
+      "type": "date_with_time",
+      "notes": "UTC. Set once on record creation, never overwritten."
+    },
+    {
+      "name": "last_interaction_at",
+      "type": "date_with_time",
+      "notes": "UTC. Updated on every message from the user."
+    }
+  ]
+}

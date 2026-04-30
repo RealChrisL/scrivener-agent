@@ -1,0 +1,42 @@
+{
+  "_instructions": "Copy this file to your SERVICEFLOW_DATA_DIR as 'business_guide.json' and fill in your service areas. The agent loads this at startup to identify case types, guide conversational questionnaires, share pricing, and explain processes. Add or remove service objects as needed.",
+  "businesses": [
+    {
+      "name": "[Service Area A — e.g. Contract Review]",
+      "priority": "P0",
+      "questions": [
+        "What type of contract do you need reviewed? (employment / vendor / partnership / other)",
+        "What is the approximate value or duration of the contract?",
+        "Do you have a deadline for the review?",
+        "Have you already signed, or is this pre-signature?"
+      ],
+      "pricing": "[Your pricing — e.g. Starting from $X for contracts up to N pages]",
+      "documents": "[Required documents — e.g. Draft contract in PDF or Word format]",
+      "process": "[Your process — e.g. 1. Submit contract 2. Review within 3 business days 3. Receive annotated draft with recommendations]"
+    },
+    {
+      "name": "[Service Area B — e.g. Compliance Audit]",
+      "priority": "P0",
+      "questions": [
+        "What industry or regulation does this audit relate to?",
+        "How large is your organization (headcount or revenue range)?",
+        "Is this for an upcoming regulatory inspection or a proactive review?",
+        "What is your timeline?"
+      ],
+      "pricing": "[Your pricing]",
+      "documents": "[Required documents — e.g. Last 12 months of relevant records, org chart]",
+      "process": "[Your process]"
+    },
+    {
+      "name": "[Service Area C — e.g. Initial Consultation]",
+      "priority": "P1",
+      "questions": [
+        "Briefly describe your situation — what outcome are you looking for?",
+        "Have you worked with a firm like ours before on this type of matter?"
+      ],
+      "pricing": "[e.g. Complimentary 30-minute initial consultation]",
+      "documents": "No documents required for the initial consultation.",
+      "process": "[e.g. 1. Book via our scheduling link 2. 30-min call with a consultant 3. Follow-up proposal within 2 business days]"
+    }
+  ]
+}
