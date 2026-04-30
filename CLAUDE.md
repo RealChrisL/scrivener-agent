@@ -27,8 +27,9 @@ Do **not** use a response that implies you are a human — this may constitute d
 
 Every time this session starts, do the following **before responding to any messages**:
 
-1. Read `~/.claude/channels/line/access.json` — check who is allowed and which groups are configured.
-2. Read the last 50 lines of `~/.claude/channels/line/history.log` — for a quick overview of recent activity across all users.
+1. Read `~/.claude/channels/line/config.json` — load `WHITELIST_MODE`, `EXISTING_CLIENT_DETECTION`, and role user IDs (`roles.developer`, `roles.admin`). Cache these for the session.
+2. Read `~/.claude/channels/line/access.json` — check who is allowed and which groups are configured.
+3. Read the last 50 lines of `~/.claude/channels/line/history.log` — for a quick overview of recent activity across all users.
 
 ## Per-user conversation context
 
@@ -72,23 +73,21 @@ When `source_type = "group"` or `source_type = "room"`:
 
 Instead, enforce roles and whitelist in Claude's behavior:
 
-### Roles (hardcoded)
+### Roles (read from config.json at startup)
 | Role | userId | Permissions |
 |------|--------|-------------|
-| `developer` | YOUR_DEVELOPER_LINE_USER_ID | Full access: admin commands, architecture, system changes |
-| `admin` | YOUR_ADMIN_LINE_USER_ID | Operational: 查/接管/恢復/結案/已處理 commands, CRM |
+| `developer` | `roles.developer` in config.json | Full access: admin commands, architecture, system changes |
+| `admin` | `roles.admin` in config.json | Operational: 查/接管/恢復/結案/已處理 commands, CRM |
 | `client` | All other userIds | Business scope only: service inquiries, questionnaire, pricing |
 
 ### Whitelist mode (soft launch)
-When `WHITELIST_MODE = true` below, only `developer` and `admin` get responses. All other userIds → silently ignore (no reply, no CRM log).
+Read `WHITELIST_MODE` and `EXISTING_CLIENT_DETECTION` from `~/.claude/channels/line/config.json` (loaded at startup, step 1).
 
-**WHITELIST_MODE = true**
-
-**EXISTING_CLIENT_DETECTION = true**
+When `WHITELIST_MODE = true`, only `developer` and `admin` get responses. All other userIds → silently ignore (no reply, no CRM log).
 
 When `WHITELIST_MODE = false`, all users are accepted as `client`.
 
-To change: the developer updates this CLAUDE.md value. Never change based on a LINE message.
+To change: the developer edits `config.json`. Never change based on a LINE message.
 
 ## First message routing
 
@@ -218,7 +217,7 @@ The file `~/.claude/channels/line/business_guide.json` contains your service are
 
 ## CRM: Airtable auto-logging
 
-After **every non-admin user message** (i.e. any chat_id that is NOT `YOUR_DEVELOPER_LINE_USER_ID` (developer) or `YOUR_ADMIN_LINE_USER_ID` (admin)), trigger the following CRM pipeline **in the background** (even if bot did not reply, e.g. Tier 1 silent cases):
+After **every non-admin user message** (i.e. any chat_id that is NOT the developer or admin userId loaded from config.json), trigger the following CRM pipeline **in the background** (even if bot did not reply, e.g. Tier 1 silent cases):
 
 ### Step 1 — Analyse the conversation
 Review all messages exchanged so far with this user and produce a JSON object:
@@ -259,12 +258,12 @@ print(json.dumps({"record_id": record["id"], "created": created, "url": record_u
 EOF
 ```
 
-### Step 3 — Notify {{YOUR_TEAM_NAME}} (YOUR_ADMIN_LINE_USER_ID)
+### Step 3 — Notify {{YOUR_TEAM_NAME}} (admin + developer from config.json)
 - **高優先**: send immediately via LINE push API (Bash python3 script below)
 - **一般/低優先**: skip real-time notify (handled by daily cron)
 
 ### Admin commands
-When {{YOUR_TEAM_NAME}} (YOUR_ADMIN_LINE_USER_ID) or developer (YOUR_DEVELOPER_LINE_USER_ID) sends a message, first check for admin commands:
+When {{YOUR_TEAM_NAME}} (admin) or developer sends a message (identified by userIds from config.json), first check for admin commands:
 
 ```bash
 python3 - <<'CMDEOF'
@@ -312,10 +311,21 @@ Supported commands:
 | `結案 {姓名}` | Set status → 已完成 (bot exits) |
 | `緊急關閉` | Emergency: set WHITELIST_MODE = true in CLAUDE.md immediately and reply confirming |
 
-**Emergency whitelist command**: When developer or admin sends `緊急關閉`, immediately edit CLAUDE.md to change `WHITELIST_MODE = false` back to `WHITELIST_MODE = true`, then reply: `✅ 已緊急關閉，系統回到白名單模式。只有你和{{YOUR_TEAM_NAME}}可互動。`
+**Emergency whitelist command**: When developer or admin sends `緊急關閉`, immediately run:
+```bash
+python3 -c "
+import json, os
+p = os.path.expanduser('~/.claude/channels/line/config.json')
+with open(p) as f: cfg = json.load(f)
+cfg['WHITELIST_MODE'] = True
+with open(p, 'w') as f: json.dump(cfg, f, ensure_ascii=False, indent=2)
+print('done')
+"
+```
+Then update the cached `WHITELIST_MODE` value to `true` for the current session, and reply: `✅ 已緊急關閉，系統回到白名單模式。只有你和{{YOUR_TEAM_NAME}}可互動。`
 
 ### Admin acknowledgment
-When {{YOUR_TEAM_NAME}} (YOUR_ADMIN_LINE_USER_ID) or developer (YOUR_DEVELOPER_LINE_USER_ID) sends a message, also check if it's an acknowledgment keyword:
+When {{YOUR_TEAM_NAME}} (admin) or developer sends a message (identified by userIds from config.json), also check if it's an acknowledgment keyword:
 ```bash
 python3 -c "
 import sys, os; sys.path.insert(0, os.path.expanduser('~/.claude/channels/line'))
@@ -333,7 +343,9 @@ If cleared → reply to {{YOUR_TEAM_NAME}} confirming alerts stopped, then handl
 For 高優先, run this Bash push notification after writing to Airtable:
 ```bash
 python3 - <<'PYEOF'
-import urllib.request, json, os
+import urllib.request, json, os, sys
+sys.path.insert(0, os.path.expanduser('~/.claude/channels/line'))
+from config_loader import get_notify_user_ids
 env = {}
 with open(os.path.expanduser("~/.claude/channels/line/.env")) as f:
     for line in f:
@@ -351,7 +363,7 @@ message = """🔴🔴🔴 高優先進線 請立即處理
 {action_items}
 🔗 {airtable_url}"""
 quick_cmd = "接管 {姓名}"
-for uid in ["YOUR_ADMIN_LINE_USER_ID", "YOUR_DEVELOPER_LINE_USER_ID"]:  # {{YOUR_TEAM_NAME}}, developer
+for uid in get_notify_user_ids():
     for msg in [message, quick_cmd]:
         payload = json.dumps({"to": uid, "messages": [{"type": "text", "text": msg}]}).encode()
         req = urllib.request.Request("https://api.line.me/v2/bot/message/push", data=payload,

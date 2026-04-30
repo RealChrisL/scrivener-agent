@@ -8,16 +8,17 @@ Storage: ~/.claude/channels/line/pending_alerts.json
 
 import json
 import os
+import sys
 import urllib.request
 from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from config_loader import get_notify_user_ids
+
 ALERTS_PATH = os.path.expanduser("~/.claude/channels/line/pending_alerts.json")
 ENV_PATH = os.path.expanduser("~/.claude/channels/line/.env")
-NOTIFY_USER_IDS = [
-    "YOUR_ADMIN_LINE_USER_ID",     # admin / operator
-    "YOUR_DEVELOPER_LINE_USER_ID", # developer
-]
-ADMIN_USER_ID = NOTIFY_USER_IDS[0]  # primary recipient for single-target calls
+NOTIFY_USER_IDS = get_notify_user_ids()
+ADMIN_USER_ID = NOTIFY_USER_IDS[0] if NOTIFY_USER_IDS else ""
 MAX_RESENDS = 3
 RESEND_INTERVAL_MINUTES = 15
 
@@ -125,9 +126,11 @@ def process_pending_alerts():
             continue
 
         # Resend
+        parts = alert["message"].split("\n", 1)
+        body = parts[1] if len(parts) > 1 else parts[0]
         resend_msg = (
             f"🔴🔴🔴 重發通知（第{send_count + 1}次）請立即處理\n"
-            + alert["message"].split("\n", 1)[1]  # Keep original content, update header
+            + body
             + f"\n\n（回覆「已處理」停止通知）"
         )
         try:
@@ -145,11 +148,8 @@ def process_pending_alerts():
 
 
 def handle_acknowledgment(admin_message: str) -> bool:
-    """
-    Returns True if the message is an acknowledgment keyword.
-    Called when the admin sends a message to the bot.
-    """
-    keywords = {"已處理", "已看到", "ok", "OK", "好", "收到"}
+    """Returns True if the message is an acknowledgment keyword."""
+    keywords = {"已處理", "已看到", "收到"}
     return admin_message.strip() in keywords
 
 

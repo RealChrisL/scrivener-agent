@@ -64,7 +64,7 @@ sequenceDiagram
     participant N as Operator
 
     U->>B: sends message
-    B->>B: check WHITELIST_MODE (CLAUDE.md)
+    B->>B: check WHITELIST_MODE (config.json)
     B->>AT: get_bot_mode(user_id)
 
     alt mode = off  [已完成]
@@ -155,9 +155,10 @@ flowchart TD
 line-bot/
 ├── README.md                      # This file (English)
 ├── README.zh-TW.md                # 繁體中文版本
-├── CLAUDE.md                      # Agent behavior spec — persona, routing, CRM rules, flags
+├── CLAUDE.md                      # Agent behavior spec — persona, routing, CRM rules
 ├── SYSTEM_OVERVIEW.md             # Operator quick-reference (English)
 ├── SYSTEM_OVERVIEW.zh-TW.md      # 操作員快速參考（繁體中文）
+├── config.example.json            # Config template — copy to ~/.claude/channels/line/config.json
 ├── launch.sh                      # Start Claude session (auto-restart + JSONL trimming)
 ├── start.sh                       # Start LINE webhook MCP server (bun)
 ├── watchdog.sh                    # Process guardian — keeps ngrok + bun alive
@@ -167,6 +168,7 @@ line-bot/
 └── lib/                           # Runtime Python modules
     ├── airtable_crm.py            # Core CRM: upsert, status, admin commands, cache
     ├── alert_manager.py           # Persistent alert resend (15 min, max 3×)
+    ├── config_loader.py           # Reads config.json — shared by all Python modules
     ├── split_history.py           # Fan-out shared history.log → per-user logs
     ├── daily_followup.py          # Daily stale-case digest to operator
     ├── sla_checker.py             # SLA breach detector (4 hr threshold)
@@ -182,6 +184,7 @@ line-bot/
 | `CLAUDE.md`, `*.sh`, `.mcp.json`, `.claude/` | `~/line-bot/` (as-is) |
 | `lib/*.py`, `lib/*.json` | `~/.claude/channels/line/` |
 | `lib/.env.example` → `.env` | `~/.claude/channels/line/.env` |
+| `config.example.json` → `config.json` | `~/.claude/channels/line/config.json` |
 
 ---
 
@@ -222,13 +225,24 @@ cp lib/.env.example ~/.claude/channels/line/.env
 cp lib/*.py lib/*.json ~/.claude/channels/line/
 ```
 
-### 4. Set user IDs in CLAUDE.md
+### 4. Create config.json
 
-Open `CLAUDE.md` and replace the placeholder user IDs:
-
+```bash
+cp config.example.json ~/.claude/channels/line/config.json
 ```
-| `developer` | YOUR_LINE_USER_ID       | Full access |
-| `admin`     | NOTARY_LINE_USER_ID     | Operational |
+
+Open `~/.claude/channels/line/config.json` and fill in your values:
+
+```json
+{
+  "WHITELIST_MODE": true,
+  "EXISTING_CLIENT_DETECTION": true,
+  "office_name": "Your Firm Name",
+  "roles": {
+    "developer": "YOUR_DEVELOPER_LINE_USER_ID",
+    "admin": "YOUR_ADMIN_LINE_USER_ID"
+  }
+}
 ```
 
 To find a LINE user ID: the agent receives it in every webhook event. Check `history.log` after your first message.
@@ -300,7 +314,7 @@ tmux new-session -s line-bot "bash launch.sh"
 1. In LINE Developers console, set webhook URL to your ngrok URL + `/webhook`
 2. Enable webhook, disable auto-reply
 3. Test by messaging the OA from your LINE account
-4. When ready to open to the public: edit `CLAUDE.md`, set `WHITELIST_MODE = false`
+4. When ready to open to the public: edit `~/.claude/channels/line/config.json`, set `"WHITELIST_MODE": false`
 
 ---
 
@@ -313,23 +327,23 @@ tmux new-session -s line-bot "bash launch.sh"
 | `接管` | Same, auto-targets the most recent high-priority alert |
 | `恢復 {姓名}` | Bot resumes auto-replies for this client |
 | `結案 {姓名}` | Mark case complete; agent exits permanently for this client |
-| `緊急關閉` | Immediately edit CLAUDE.md to set WHITELIST_MODE=true |
-| `已處理` / `ok` / `好` / `收到` | Clear all pending alert resends |
+| `緊急關閉` | Immediately set `WHITELIST_MODE=true` in config.json and apply it |
+| `已處理` / `已看到` / `收到` | Clear all pending alert resends |
 
 **Important:** Always send `接管` before replying via OA Manager — otherwise both the agent and the human operator reply to the client simultaneously.
 
 ---
 
-## Configuration Flags (in `CLAUDE.md`)
+## Configuration Flags (in `~/.claude/channels/line/config.json`)
 
-| Flag | Current default | Effect |
-|------|----------------|--------|
-| `WHITELIST_MODE = true` | Enabled | Only `developer` and `admin` get responses (soft launch mode) |
-| `WHITELIST_MODE = false` | — | All users accepted (production mode) |
-| `EXISTING_CLIENT_DETECTION = true` | Enabled | Tier 1 routing active — existing client signals trigger silent CRM |
-| `EXISTING_CLIENT_DETECTION = false` | — | Everyone treated as new client (Tier 2/3 only) |
+| Flag | Default | Effect |
+|------|---------|--------|
+| `WHITELIST_MODE: true` | Enabled | Only `developer` and `admin` get responses (soft launch mode) |
+| `WHITELIST_MODE: false` | — | All users accepted (production mode) |
+| `EXISTING_CLIENT_DETECTION: true` | Enabled | Tier 1 routing active — existing client signals trigger silent CRM |
+| `EXISTING_CLIENT_DETECTION: false` | — | Everyone treated as new client (Tier 2/3 only) |
 
-Change these by editing `CLAUDE.md` directly — or send `緊急關閉` for the emergency whitelist toggle.
+Edit `config.json` to change flags — or send `緊急關閉` for the emergency whitelist toggle.
 
 ---
 

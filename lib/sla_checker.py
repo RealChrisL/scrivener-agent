@@ -13,14 +13,12 @@ import sys
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from airtable_crm import _get_config, record_url
+from config_loader import get_notify_user_ids
 
 SLA_HOURS = 4
-NOTIFY_USER_IDS = [
-    "YOUR_ADMIN_LINE_USER_ID",     # admin / operator
-    "YOUR_DEVELOPER_LINE_USER_ID", # developer
-]
+NOTIFY_USER_IDS = get_notify_user_ids()
 ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
 SLA_LOG = os.path.join(os.path.dirname(__file__), "sla.log")
 

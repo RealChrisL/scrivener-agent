@@ -8,13 +8,11 @@ import sys
 import os
 import urllib.request
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from airtable_crm import get_stale_records, record_url, _get_config
+from config_loader import get_notify_user_ids
 
-NOTIFY_USER_IDS = [
-    "YOUR_ADMIN_LINE_USER_ID",     # admin / operator
-    "YOUR_DEVELOPER_LINE_USER_ID", # developer
-]
+NOTIFY_USER_IDS = get_notify_user_ids()
 STALE_DAYS = 1
 
 

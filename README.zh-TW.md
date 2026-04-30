@@ -64,7 +64,7 @@ sequenceDiagram
     participant N as 操作員
 
     U->>B: 發送訊息
-    B->>B: 檢查 WHITELIST_MODE（CLAUDE.md）
+    B->>B: 檢查 WHITELIST_MODE（config.json）
     B->>AT: get_bot_mode(user_id)
 
     alt mode = off  [已完成]
@@ -155,9 +155,10 @@ flowchart TD
 line-bot/
 ├── README.md                      # 英文版本
 ├── README.zh-TW.md                # 本文件（繁體中文）
-├── CLAUDE.md                      # 代理行為規格 — 角色、路由、CRM 規則、開關
+├── CLAUDE.md                      # 代理行為規格 — 角色、路由、CRM 規則
 ├── SYSTEM_OVERVIEW.md             # 操作員快速參考（英文）
 ├── SYSTEM_OVERVIEW.zh-TW.md      # 操作員快速參考（繁體中文）
+├── config.example.json            # 設定範本 — 複製至 ~/.claude/channels/line/config.json
 ├── launch.sh                      # 啟動 Claude 工作階段（自動重啟 + JSONL 修剪）
 ├── start.sh                       # 啟動 LINE webhook MCP 伺服器（bun）
 ├── watchdog.sh                    # 程序守護 — 保持 ngrok + bun 存活
@@ -167,6 +168,7 @@ line-bot/
 └── lib/                           # 執行期 Python 模組
     ├── airtable_crm.py            # 核心 CRM：upsert、狀態、管理指令、快取
     ├── alert_manager.py           # 持續警報重發（15 分鐘，最多 3 次）
+    ├── config_loader.py           # 讀取 config.json — 所有 Python 模組共用
     ├── split_history.py           # 共享 history.log 分拆為各用戶記錄
     ├── daily_followup.py          # 每日逾期案件摘要至操作員
     ├── sla_checker.py             # SLA 違規偵測（4 小時閾值）
@@ -182,6 +184,7 @@ line-bot/
 | `CLAUDE.md`、`*.sh`、`.mcp.json`、`.claude/` | `~/line-bot/`（原樣） |
 | `lib/*.py`、`lib/*.json` | `~/.claude/channels/line/` |
 | `lib/.env.example` → `.env` | `~/.claude/channels/line/.env` |
+| `config.example.json` → `config.json` | `~/.claude/channels/line/config.json` |
 
 ---
 
@@ -222,13 +225,24 @@ cp lib/.env.example ~/.claude/channels/line/.env
 cp lib/*.py lib/*.json ~/.claude/channels/line/
 ```
 
-### 4. 設定 CLAUDE.md 中的用戶 ID
+### 4. 建立 config.json
 
-開啟 `CLAUDE.md` 並替換佔位符用戶 ID：
-
+```bash
+cp config.example.json ~/.claude/channels/line/config.json
 ```
-| `developer` | 您的 LINE 用戶 ID      | 完整存取 |
-| `admin`     | 代書的 LINE 用戶 ID    | 操作存取 |
+
+開啟 `~/.claude/channels/line/config.json` 並填入您的值：
+
+```json
+{
+  "WHITELIST_MODE": true,
+  "EXISTING_CLIENT_DETECTION": true,
+  "office_name": "您的事務所名稱",
+  "roles": {
+    "developer": "YOUR_DEVELOPER_LINE_USER_ID",
+    "admin": "YOUR_ADMIN_LINE_USER_ID"
+  }
+}
 ```
 
 要找到 LINE 用戶 ID：代理在每個 webhook 事件中都會收到。在第一次發送訊息後查看 `history.log`。
@@ -298,7 +312,7 @@ tmux new-session -s line-bot "bash launch.sh"
 1. 在 LINE Developers 控制台，將 webhook URL 設為您的 ngrok URL + `/webhook`
 2. 啟用 webhook，停用自動回覆
 3. 從您的 LINE 帳號傳送訊息給官方帳號進行測試
-4. 準備好向公眾開放時：編輯 `CLAUDE.md`，設定 `WHITELIST_MODE = false`
+4. 準備好向公眾開放時：編輯 `~/.claude/channels/line/config.json`，設定 `"WHITELIST_MODE": false`
 
 ---
 
@@ -311,23 +325,23 @@ tmux new-session -s line-bot "bash launch.sh"
 | `接管` | 同上，自動針對最近的高優先警報 |
 | `恢復 {姓名}` | 代理恢復自動回覆 |
 | `結案 {姓名}` | 標記案件完成；代理永久退出此客戶 |
-| `緊急關閉` | 立即編輯 CLAUDE.md 設定 WHITELIST_MODE=true |
-| `已處理` / `ok` / `好` / `收到` | 清除所有待發警報重發 |
+| `緊急關閉` | 立即設定 config.json 中 `WHITELIST_MODE=true` 並即時生效 |
+| `已處理` / `已看到` / `收到` | 清除所有待發警報重發 |
 
 **重要：** 透過 OA Manager 回覆前務必先發送 `接管` — 否則代理和操作員將同時回覆客戶。
 
 ---
 
-## 設定開關（在 `CLAUDE.md` 中）
+## 設定開關（在 `~/.claude/channels/line/config.json` 中）
 
 | 開關 | 預設值 | 效果 |
 |------|-------|------|
-| `WHITELIST_MODE = true` | 啟用 | 只有 `developer` 和 `admin` 獲得回應（軟上線模式） |
-| `WHITELIST_MODE = false` | — | 接受所有用戶（正式模式） |
-| `EXISTING_CLIENT_DETECTION = true` | 啟用 | 第一層路由啟動 — 既有客戶信號觸發靜默 CRM |
-| `EXISTING_CLIENT_DETECTION = false` | — | 所有人視為新客戶（僅第二/三層） |
+| `WHITELIST_MODE: true` | 啟用 | 只有 `developer` 和 `admin` 獲得回應（軟上線模式） |
+| `WHITELIST_MODE: false` | — | 接受所有用戶（正式模式） |
+| `EXISTING_CLIENT_DETECTION: true` | 啟用 | 第一層路由啟動 — 既有客戶信號觸發靜默 CRM |
+| `EXISTING_CLIENT_DETECTION: false` | — | 所有人視為新客戶（僅第二/三層） |
 
-透過直接編輯 `CLAUDE.md` 來更改這些設定 — 或發送 `緊急關閉` 進行緊急白名單切換。
+編輯 `config.json` 來更改這些設定 — 或發送 `緊急關閉` 進行緊急白名單切換。
 
 ---
 
